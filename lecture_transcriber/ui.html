@@ -1,0 +1,513 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vorlesung</title>
+<style>
+  :root {
+    --bg: #ffffff; --side: #f5f5f7; --fg: #1d1d1f; --muted: #6e6e73; --faint: #a1a1a6;
+    --line: #e3e3e8; --card: #ffffff; --input: #ffffff; --accent: #0071e3; --accent-fg: #fff;
+    --rec: #e5383b; --warn-bg: #fff4e5; --warn-fg: #8a4b00; --hover: rgba(0,0,0,.05); --sel: rgba(0,113,227,.12);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1c1e; --side: #161618; --fg: #f2f2f7; --muted: #a1a1a6; --faint: #6e6e73;
+      --line: #333336; --card: #232325; --input: #2c2c2e; --accent: #0a84ff; --accent-fg: #fff;
+      --rec: #ff453a; --warn-bg: #3a2a12; --warn-fg: #ffcc80; --hover: rgba(255,255,255,.06); --sel: rgba(10,132,255,.22);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--fg);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+    display: flex; overflow: hidden; -webkit-font-smoothing: antialiased;
+  }
+  button { font: inherit; cursor: pointer; }
+  button:disabled { opacity: .45; cursor: default; }
+
+  /* ---------- sidebar ---------- */
+  aside {
+    width: 260px; flex: none; background: var(--side); border-right: 1px solid var(--line);
+    display: flex; flex-direction: column; min-height: 0;
+  }
+  .side-top { padding: 16px 12px 8px; }
+  .new-btn {
+    width: 100%; padding: 9px 12px; border-radius: 9px; border: 1px solid var(--line);
+    background: var(--card); color: var(--fg); font-weight: 600; text-align: left;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .new-btn .plus { color: var(--rec); font-size: 12px; }
+  .side-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+                color: var(--faint); padding: 14px 20px 4px; }
+  #archive { flex: 1; overflow-y: auto; padding: 0 8px 8px; min-height: 0; }
+  .item { padding: 7px 12px; border-radius: 8px; cursor: pointer; }
+  .item:hover { background: var(--hover); }
+  .item.active { background: var(--sel); }
+  .item .t { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .item .m { font-size: 12px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+  .item .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--rec); animation: pulse 1.4s infinite; }
+  .empty-archive { color: var(--faint); font-size: 13px; padding: 8px 12px; }
+  .model { border-top: 1px solid var(--line); padding: 10px 16px; font-size: 12px; color: var(--muted);
+           display: flex; gap: 8px; align-items: center; }
+  .model .ind { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); flex: none; }
+  .model.ready .ind { background: #34c759; }
+  .model.loading .ind { background: #ff9f0a; animation: pulse 1.2s infinite; }
+  .model.error .ind { background: var(--rec); }
+
+  /* ---------- main ---------- */
+  main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  .hidden { display: none !important; }
+
+  /* setup */
+  #setup { flex: 1; overflow-y: auto; display: flex; justify-content: center; padding: 48px 24px; }
+  .setup-inner { width: 100%; max-width: 480px; }
+  h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -.01em; }
+  .sub { color: var(--muted); margin: 0 0 28px; }
+  label { display: block; font-size: 13px; font-weight: 600; margin: 16px 0 6px; }
+  label .opt { font-weight: 400; color: var(--faint); }
+  input[type=text], select, textarea {
+    width: 100%; font: inherit; color: var(--fg); background: var(--input);
+    border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; outline: none;
+  }
+  input[type=text]:focus, select:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--sel); }
+  textarea { resize: vertical; min-height: 56px; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 5px; }
+  .start {
+    margin-top: 24px; width: 100%; padding: 13px; border: none; border-radius: 10px;
+    background: var(--rec); color: #fff; font-size: 16px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+  }
+  .start .dot { width: 12px; height: 12px; border-radius: 50%; background: #fff; }
+  .or { display: flex; align-items: center; gap: 12px; color: var(--faint); font-size: 12px; margin: 28px 0 16px; }
+  .or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  #drop {
+    border: 1.5px dashed var(--line); border-radius: 12px; padding: 22px; text-align: center;
+    color: var(--muted); cursor: pointer; transition: border-color .15s, background .15s;
+  }
+  #drop.over { border-color: var(--accent); background: var(--sel); color: var(--fg); }
+  #drop strong { color: var(--fg); font-weight: 600; }
+  .err { color: var(--rec); font-size: 13px; margin-top: 12px; min-height: 1em; }
+
+  /* session */
+  #session { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  .bar {
+    display: flex; align-items: center; gap: 14px; padding: 12px 20px; border-bottom: 1px solid var(--line);
+    flex-wrap: wrap;
+  }
+  .bar h2 { font-size: 17px; margin: 0; flex: 1; min-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pill { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: var(--muted);
+          font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .pill .d { width: 9px; height: 9px; border-radius: 50%; background: var(--faint); }
+  .pill.rec { color: var(--fg); font-weight: 600; }
+  .pill.rec .d { background: var(--rec); animation: pulse 1.4s infinite; }
+  .pill.busy .d { background: #ff9f0a; animation: pulse 1s infinite; }
+  .pill.done .d { background: #34c759; }
+  .meter { width: 70px; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+  .meter i { display: block; height: 100%; width: 0; background: #34c759; transition: width .3s; border-radius: 3px; }
+  .tool { padding: 5px 10px; border-radius: 7px; border: 1px solid var(--line); background: var(--card);
+          color: var(--fg); font-size: 13px; }
+  .stop { padding: 6px 14px; border-radius: 8px; border: none; background: var(--fg); color: var(--bg);
+          font-weight: 600; font-size: 13px; display: inline-flex; align-items: center; gap: 7px; }
+  .stop .sq { width: 9px; height: 9px; background: currentColor; border-radius: 2px; }
+  .save-wrap { position: relative; }
+  .save { padding: 6px 14px; border-radius: 8px; border: none; background: var(--accent); color: var(--accent-fg);
+          font-weight: 600; font-size: 13px; }
+  .menu { position: absolute; right: 0; top: calc(100% + 6px); background: var(--card); border: 1px solid var(--line);
+          border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.18); padding: 5px; min-width: 230px; z-index: 5; }
+  .menu button { display: block; width: 100%; text-align: left; border: none; background: none; color: var(--fg);
+                 padding: 7px 10px; border-radius: 6px; font-size: 13px; }
+  .menu button:hover { background: var(--sel); }
+  .menu button small { color: var(--muted); margin-left: 6px; }
+  .toast { position: fixed; bottom: 22px; right: 22px; max-width: 420px; background: var(--fg); color: var(--bg);
+           padding: 10px 14px; border-radius: 10px; font-size: 13px; box-shadow: 0 8px 24px rgba(0,0,0,.25);
+           z-index: 10; word-break: break-all; }
+  .progress { height: 3px; background: var(--line); }
+  .progress i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .4s; }
+  .banner { margin: 12px 20px 0; padding: 9px 12px; border-radius: 8px; font-size: 13px;
+            background: var(--warn-bg); color: var(--warn-fg); }
+  #transcript { flex: 1; overflow-y: auto; padding: 22px 0 120px; scroll-behavior: auto; }
+  .tx { max-width: 760px; margin: 0 auto; padding: 0 28px; font-size: var(--fs, 17px); line-height: 1.65; }
+  .p { margin: 0 0 1em; display: grid; grid-template-columns: 64px 1fr; gap: 10px; }
+  .p .ts { color: var(--faint); font-size: 12px; padding-top: .35em; font-variant-numeric: tabular-nums; user-select: none; }
+  .p.new { animation: fadein 1.4s ease-out; }
+  .placeholder { color: var(--faint); text-align: center; margin-top: 18vh; }
+  #jump { position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%);
+          background: var(--accent); color: var(--accent-fg); border: none; border-radius: 18px;
+          padding: 7px 16px; font-size: 13px; box-shadow: 0 4px 14px rgba(0,0,0,.18); }
+  .content-wrap { position: relative; flex: 1; display: flex; flex-direction: column; min-height: 0; }
+
+  @keyframes pulse { 50% { opacity: .35; } }
+  @keyframes fadein { from { background: var(--sel); } to { background: transparent; } }
+
+  @media (max-width: 700px) {
+    aside { display: none; }
+    .tx { padding: 0 16px; }
+    .p { grid-template-columns: 1fr; gap: 0; }
+  }
+</style>
+</head>
+<body>
+<aside>
+  <div class="side-top">
+    <button class="new-btn" id="newBtn"><span class="plus">●</span> Neue Aufnahme</button>
+  </div>
+  <div class="side-label">Vorlesungen</div>
+  <div id="archive"><div class="empty-archive">Noch keine Aufnahmen.</div></div>
+  <div class="model loading" id="model"><span class="ind"></span><span id="modelText">Lade Spracherkennung…</span></div>
+</aside>
+
+<main>
+  <!-- setup: start a new recording -->
+  <section id="setup">
+    <div class="setup-inner">
+      <h1>Neue Aufnahme</h1>
+      <p class="sub">Transkribiert live und ohne Zeitlimit, alles bleibt auf deinem Mac.</p>
+
+      <label for="title">Vorlesung</label>
+      <input type="text" id="title" list="titles" placeholder="z.B. Analysis I" autocomplete="off">
+      <datalist id="titles"></datalist>
+
+      <label for="device">Audioquelle</label>
+      <select id="device"></select>
+      <div class="hint" id="deviceHint">Im Hörsaal: eingebautes Mikrofon. Für Zoom/Teams: „BlackHole“ wählen.</div>
+
+      <label for="prompt">Fachbegriffe <span class="opt">(optional)</span></label>
+      <textarea id="prompt" placeholder="z.B. Eigenwert, Determinante, Gauß-Algorithmus, Prof. Müller"></textarea>
+      <div class="hint">Hilft bei der richtigen Schreibweise von Namen und Fachwörtern. Wird pro Vorlesung gemerkt.</div>
+
+      <button class="start" id="startBtn"><span class="dot"></span>Aufnahme starten</button>
+      <div class="err" id="startErr"></div>
+
+      <div class="or">oder</div>
+      <div id="drop">
+        <strong>Aufnahme oder Video hier ablegen</strong><br>
+        <span>oder klicken zum Auswählen · MP3, M4A, WAV, MP4, MOV …</span>
+        <input type="file" id="file" accept="audio/*,video/*,.m4a,.mp3,.wav,.mp4,.mov,.mkv,.webm,.aac,.flac,.ogg" class="hidden">
+      </div>
+      <div class="err" id="uploadErr"></div>
+    </div>
+  </section>
+
+  <!-- session: live / finished / archived transcript -->
+  <section id="session" class="hidden">
+    <div class="bar">
+      <h2 id="sTitle">Vorlesung</h2>
+      <span class="pill" id="pill"><span class="d"></span><span id="pillText"></span></span>
+      <span class="meter hidden" id="meter" title="Eingangspegel"><i id="meterFill"></i></span>
+      <button class="tool" id="smaller" title="Schrift kleiner">A−</button>
+      <button class="tool" id="bigger" title="Schrift größer">A+</button>
+      <button class="tool" id="copyBtn">Kopieren</button>
+      <button class="tool hidden" id="revealBtn">Im Finder zeigen</button>
+      <span class="save-wrap hidden" id="saveWrap">
+        <button class="save" id="saveBtn">Speichern unter…</button>
+        <div class="menu hidden" id="saveMenu">
+          <button data-f="docx">Word-Dokument <small>.docx</small></button>
+          <button data-f="txt">Text <small>.txt</small></button>
+          <button data-f="md">Markdown mit Zeitmarken <small>.md</small></button>
+          <button data-f="srt">Untertitel <small>.srt</small></button>
+          <button data-f="wav" id="saveWav">Audioaufnahme <small>.wav</small></button>
+        </div>
+      </span>
+      <button class="stop hidden" id="stopBtn"><span class="sq"></span>Stopp</button>
+    </div>
+    <div class="progress hidden" id="progress"><i id="progressFill"></i></div>
+    <div class="banner hidden" id="banner"></div>
+    <div class="content-wrap">
+      <div id="transcript"><div class="tx" id="tx"></div></div>
+      <button id="jump" class="hidden">↓ Zum aktuellen Text</button>
+    </div>
+  </section>
+</main>
+
+<div class="toast hidden" id="toast"></div>
+<script>
+const $ = id => document.getElementById(id);
+const api = (path, body) => fetch(path, {
+  method: 'POST', headers: {'Content-Type': 'application/json', 'X-Vorlesung': '1'},
+  body: JSON.stringify(body || {})
+}).then(async r => { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || r.statusText); return d; });
+
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+};
+
+let nativeSave = false, state = {}, live = [], view = 'setup', viewing = null, follow = true, sessions = [];
+
+// ---------- helpers ----------
+function clock(s) {
+  s = Math.max(0, Math.floor(s || 0));
+  const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60;
+  return (h ? h + ':' + String(m).padStart(2, '0') : String(m)) + ':' + String(x).padStart(2, '0');
+}
+function dateLabel(iso) {
+  const d = new Date(iso); if (isNaN(d)) return '';
+  const today = new Date(); const y = new Date(); y.setDate(today.getDate() - 1);
+  const time = d.toLocaleTimeString('de-DE', {hour: '2-digit', minute: '2-digit'});
+  if (d.toDateString() === today.toDateString()) return 'Heute, ' + time;
+  if (d.toDateString() === y.toDateString()) return 'Gestern, ' + time;
+  return d.toLocaleDateString('de-DE', {weekday: 'short', day: '2-digit', month: '2-digit', year: '2-digit'});
+}
+const busy = () => ['recording', 'finishing', 'file'].includes(state.mode);
+
+// ---------- rendering ----------
+function para(p, animate) {
+  const el = document.createElement('div'); el.className = 'p' + (animate ? ' new' : '');
+  const ts = document.createElement('span'); ts.className = 'ts'; ts.textContent = p.time;
+  const tx = document.createElement('span'); tx.textContent = p.text;
+  el.append(ts, tx); return el;
+}
+function renderTranscript(paragraphs, placeholder) {
+  const tx = $('tx'); tx.textContent = '';
+  if (!paragraphs.length) {
+    const d = document.createElement('div'); d.className = 'placeholder'; d.textContent = placeholder; tx.append(d);
+  }
+  paragraphs.forEach(p => tx.append(para(p, false)));
+  scrollEnd(true);
+}
+function scrollEnd(force) {
+  const t = $('transcript'); if (force || follow) t.scrollTop = t.scrollHeight;
+}
+
+function show(v) {
+  view = v;
+  $('setup').classList.toggle('hidden', v !== 'setup');
+  $('session').classList.toggle('hidden', v === 'setup');
+  if (v === 'setup') { loadDevices(); setTimeout(() => $('title').focus(), 50); }
+  renderArchive(); renderBar();
+}
+
+function renderBar() {
+  if (view === 'setup') return;
+  const s = state, isLive = view === 'live';
+  let pill = '', cls = 'pill';
+  if (isLive && s.mode === 'recording') { cls += ' rec'; pill = 'Aufnahme ' + clock(s.elapsed); }
+  else if (isLive && s.mode === 'finishing') { cls += ' busy'; pill = 'Verarbeite Rest…' + (s.backlog ? ' (' + s.backlog + ')' : ''); }
+  else if (isLive && s.mode === 'file') { cls += ' busy'; pill = 'Transkribiere… ' + Math.round((s.progress || 0) * 100) + ' %'; }
+  else if (isLive) { cls += ' done'; pill = 'Gespeichert · ' + clock(s.elapsed); }
+  else if (viewing) { cls += ' done'; pill = dateLabel(viewing.info.started) + (viewing.info.duration ? ' · ' + clock(viewing.info.duration) : ''); }
+  $('pill').className = cls; $('pillText').textContent = pill;
+  $('sTitle').textContent = isLive ? (s.title || 'Vorlesung') : (viewing ? viewing.info.title : '');
+  $('stopBtn').classList.toggle('hidden', !(isLive && (s.mode === 'recording' || s.mode === 'file')));
+  $('stopBtn').lastChild.textContent = s.mode === 'file' ? 'Abbrechen' : 'Stopp';
+  $('meter').classList.toggle('hidden', !(isLive && s.mode === 'recording'));
+  const lvl = Math.max(0, Math.min(1, ((s.level ?? -90) + 60) / 50));
+  $('meterFill').style.width = (lvl * 100) + '%';
+  $('progress').classList.toggle('hidden', !(isLive && s.mode === 'file'));
+  $('progressFill').style.width = ((s.progress || 0) * 100) + '%';
+  const canSave = (isLive && !busy() && s.last_session && s.last_session === s.session) || (!isLive && viewing);
+  $('revealBtn').classList.toggle('hidden', !canSave);
+  $('saveWrap').classList.toggle('hidden', !canSave);
+  if (!canSave) $('saveMenu').classList.add('hidden');
+  const warn = isLive ? (s.warning || (s.model === 'error' ? 'Spracherkennung nicht verfügbar: ' + s.model_error : '')) : '';
+  $('banner').textContent = warn; $('banner').classList.toggle('hidden', !warn);
+}
+
+function renderModel() {
+  const m = $('model'); m.className = 'model ' + (state.model || 'loading');
+  $('modelText').textContent = state.model === 'ready' ? state.model_desc
+    : state.model === 'error' ? 'Fehler: ' + state.model_error
+    : 'Lade Spracherkennung… (beim 1. Start ~1,6 GB Download)';
+  $('modelText').title = $('modelText').textContent;
+}
+
+function renderArchive() {
+  const box = $('archive'); box.textContent = '';
+  if (!sessions.length) { box.innerHTML = '<div class="empty-archive">Noch keine Aufnahmen.</div>'; return; }
+  for (const s of sessions) {
+    const el = document.createElement('div');
+    const isCurrent = s.id === state.session && busy();
+    const active = (view === 'live' && s.id === state.session) || (view === 'archive' && viewing && viewing.info.id === s.id);
+    el.className = 'item' + (active ? ' active' : '');
+    const t = document.createElement('div'); t.className = 't'; t.textContent = s.title;
+    const m = document.createElement('div'); m.className = 'm';
+    if (isCurrent) { const d = document.createElement('span'); d.className = 'live-dot'; m.append(d); }
+    m.append(document.createTextNode(dateLabel(s.started) + (s.duration ? ' · ' + clock(s.duration) : '')));
+    el.append(t, m);
+    el.onclick = () => openSession(s.id);
+    box.append(el);
+  }
+  const dl = $('titles'); dl.textContent = '';
+  [...new Set(sessions.map(s => s.title))].slice(0, 30).forEach(t => { const o = document.createElement('option'); o.value = t; dl.append(o); });
+}
+
+async function refreshSessions() {
+  try { sessions = await (await fetch('/api/sessions')).json(); } catch (e) {}
+  renderArchive();
+}
+
+async function openSession(id) {
+  if (id === state.session && (busy() || view === 'live')) { showLive(); return; }
+  try {
+    const r = await fetch('/api/sessions/' + encodeURIComponent(id));
+    if (!r.ok) return;
+    viewing = await r.json(); follow = false;
+    show('archive');
+    renderTranscript(viewing.paragraphs, 'Kein Text erkannt.');
+    $('transcript').scrollTop = 0;
+  } catch (e) {}
+}
+
+function showLive() {
+  viewing = null; follow = true; show('live');
+  renderTranscript(live, state.mode === 'file' ? 'Datei wird gelesen…' : 'Warte auf Sprache…');
+}
+
+// ---------- devices ----------
+async function loadDevices() {
+  const sel = $('device');
+  try {
+    const d = await (await fetch('/api/devices')).json();
+    const prev = store.get('device', '');
+    sel.textContent = '';
+    if (d.error) { $('deviceHint').textContent = d.error; }
+    for (const dev of d.devices) {
+      const o = document.createElement('option'); o.value = dev.id;
+      o.textContent = dev.name + (dev.default ? '  (Standard)' : ''); o.dataset.name = dev.name;
+      sel.append(o);
+    }
+    const match = [...sel.options].find(o => o.dataset.name === prev) || [...sel.options].find(o => o.textContent.includes('(Standard)'));
+    if (match) sel.value = match.value;
+  } catch (e) {}
+}
+
+// ---------- actions ----------
+$('newBtn').onclick = () => { if (busy()) showLive(); else show('setup'); };
+$('title').addEventListener('input', () => {
+  const prompts = store.get('prompts', {}); const p = prompts[$('title').value.trim()];
+  if (p !== undefined) $('prompt').value = p;
+});
+$('title').addEventListener('keydown', e => { if (e.key === 'Enter') $('startBtn').click(); });
+
+$('startBtn').onclick = async () => {
+  $('startErr').textContent = '';
+  const title = $('title').value.trim(), prompt = $('prompt').value.trim();
+  const sel = $('device'); const opt = sel.options[sel.selectedIndex];
+  if (opt) store.set('device', opt.dataset.name);
+  if (title) { const prompts = store.get('prompts', {}); prompts[title] = prompt; store.set('prompts', prompts); }
+  $('startBtn').disabled = true;
+  try { live = []; await api('/api/start', {title, prompt, device: sel.value || null}); showLive(); }
+  catch (e) { $('startErr').textContent = e.message; }
+  finally { $('startBtn').disabled = false; }
+};
+
+$('stopBtn').onclick = async () => {
+  $('stopBtn').disabled = true;
+  try { await api(state.mode === 'file' ? '/api/cancel' : '/api/stop'); } catch (e) {}
+  setTimeout(() => $('stopBtn').disabled = false, 800);
+};
+
+const shownSession = () => view === 'live' ? (state.last_session || state.session) : (viewing && viewing.info.id);
+$('revealBtn').onclick = () => api('/api/reveal', {id: shownSession()}).catch(() => {});
+
+function toast(text) {
+  const t = $('toast'); t.textContent = text; t.classList.remove('hidden');
+  clearTimeout(t._h); t._h = setTimeout(() => t.classList.add('hidden'), 4000);
+}
+$('saveBtn').onclick = e => {
+  e.stopPropagation();
+  const kind = view === 'live' ? 'live' : (viewing && viewing.info.kind);
+  $('saveWav').classList.toggle('hidden', kind !== 'live');
+  $('saveMenu').classList.toggle('hidden');
+};
+document.addEventListener('click', () => $('saveMenu').classList.add('hidden'));
+$('saveMenu').querySelectorAll('button').forEach(b => b.onclick = async e => {
+  e.stopPropagation(); $('saveMenu').classList.add('hidden');
+  const id = shownSession(), format = b.dataset.f;
+  if (!nativeSave) { download(id, format); return; }
+  try {
+    const r = await api('/api/save', {id, format});
+    if (r.ok) toast('Gespeichert: ' + r.path);
+  } catch (err) {
+    if (err.message === 'no dialog') download(id, format); else toast('Fehler: ' + err.message);
+  }
+});
+function download(id, format) {
+  // Browser mode (no native dialog): regular download.
+  const a = document.createElement('a');
+  a.href = '/api/sessions/' + encodeURIComponent(id) + '/export?format=' + format;
+  a.download = ''; document.body.append(a); a.click(); a.remove();
+}
+
+$('copyBtn').onclick = async () => {
+  const text = [...$('tx').querySelectorAll('.p')].map(p => p.lastChild.textContent).join('\n\n');
+  let ok = false;
+  try { await navigator.clipboard.writeText(text); ok = true; } catch (e) {
+    const ta = document.createElement('textarea'); ta.value = text; document.body.append(ta); ta.select();
+    try { ok = document.execCommand('copy'); } catch (e2) {} ta.remove();
+  }
+  $('copyBtn').textContent = ok ? 'Kopiert ✓' : 'Fehler';
+  setTimeout(() => $('copyBtn').textContent = 'Kopieren', 1500);
+};
+
+let fs = store.get('fs', 17);
+const applyFs = () => document.documentElement.style.setProperty('--fs', fs + 'px');
+applyFs();
+$('smaller').onclick = () => { fs = Math.max(12, fs - 1); applyFs(); store.set('fs', fs); };
+$('bigger').onclick = () => { fs = Math.min(30, fs + 1); applyFs(); store.set('fs', fs); };
+
+$('transcript').addEventListener('scroll', () => {
+  const t = $('transcript');
+  follow = t.scrollTop + t.clientHeight >= t.scrollHeight - 60;
+  $('jump').classList.toggle('hidden', follow || view !== 'live' || !busy());
+});
+$('jump').onclick = () => { follow = true; scrollEnd(true); $('jump').classList.add('hidden'); };
+
+// ---------- file import ----------
+const drop = $('drop');
+drop.onclick = () => $('file').click();
+$('file').onchange = () => { if ($('file').files[0]) upload($('file').files[0]); $('file').value = ''; };
+['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) upload(f); });
+document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('drop', e => e.preventDefault());
+
+function upload(file) {
+  $('uploadErr').textContent = '';
+  const title = $('title').value.trim() || file.name.replace(/\.[^.]+$/, '');
+  const q = new URLSearchParams({filename: file.name, title, prompt: $('prompt').value.trim()});
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/api/upload?' + q);
+  xhr.setRequestHeader('X-Vorlesung', '1');
+  xhr.upload.onprogress = e => { if (e.lengthComputable) drop.querySelector('strong').textContent = 'Lade… ' + Math.round(e.loaded / e.total * 100) + ' %'; };
+  xhr.onload = () => {
+    drop.querySelector('strong').textContent = 'Aufnahme oder Video hier ablegen';
+    if (xhr.status >= 300) { try { $('uploadErr').textContent = JSON.parse(xhr.responseText).error; } catch (e) { $('uploadErr').textContent = 'Fehler'; } return; }
+    live = []; showLive();
+  };
+  xhr.onerror = () => { $('uploadErr').textContent = 'Upload fehlgeschlagen'; };
+  xhr.send(file);
+}
+
+// ---------- live events ----------
+function connect() {
+  const es = new EventSource('/events');
+  es.addEventListener('init', e => {
+    const d = JSON.parse(e.data); state = d.state; live = d.paragraphs; nativeSave = !!d.native_save;
+    renderModel(); refreshSessions();
+    if (busy()) showLive(); else if (view === 'live') showLive(); else renderBar();
+  });
+  es.addEventListener('state', e => {
+    const prev = state.mode; state = JSON.parse(e.data);
+    renderModel(); renderBar();
+    if (prev !== state.mode) { refreshSessions(); }
+  });
+  es.addEventListener('reset', () => { live = []; refreshSessions(); if (view === 'live') renderTranscript(live, 'Warte auf Sprache…'); });
+  es.addEventListener('paragraph', e => {
+    const p = JSON.parse(e.data); live.push(p);
+    if (view !== 'live') return;
+    const ph = $('tx').querySelector('.placeholder'); if (ph) ph.remove();
+    $('tx').append(para(p, true)); scrollEnd();
+  });
+  es.addEventListener('finished', () => refreshSessions());
+  es.addEventListener('failure', e => { if (e.data) { try { $('banner').textContent = JSON.parse(e.data).message; $('banner').classList.remove('hidden'); } catch (x) {} } });
+  es.onerror = () => { $('model').className = 'model error'; $('modelText').textContent = 'Verbindung zur App verloren…'; };
+}
+show('setup');
+connect();
+</script>
+</body>
+</html>
