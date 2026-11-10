@@ -12,6 +12,7 @@ lokal auf deinem MacBook. Auf Apple-Silicon-Macs (M1–M4) nutzt sie dafür die 
 - **Fachbegriffe** angeben (z.B. „Eigenwert, Determinante, Prof. Müller“) für die richtige Schreibweise
 - **Absturzsicher**: Text und Audio werden laufend gespeichert, der Mac bleibt während der Aufnahme wach
 - Die Audioaufnahme bleibt als Backup erhalten
+- **Hell/Dunkel** per Knopf oben rechts (ohne Auswahl folgt die App dem macOS-Design)
 
 ## Installation (einmalig, ca. 5 Minuten)
 
