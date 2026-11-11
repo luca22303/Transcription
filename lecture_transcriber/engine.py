@@ -261,6 +261,7 @@ class Engine:
         peak = 0.0
         recent: List[np.ndarray] = []
         last_status = 0.0
+        reported_drops = 0
         with KeepAwake():
             for block in src.blocks():
                 if recorder:
@@ -283,6 +284,11 @@ class Engine:
                                    "Systemeinstellungen › Datenschutz & Sicherheit › Mikrofon.")
                     elif warning.startswith("Kein Ton"):
                         warning = ""
+                    drops = getattr(src, "dropouts", 0)
+                    if drops > reported_drops:
+                        reported_drops = drops
+                        warning = ("Audio-Aussetzer erkannt: Der Mac kam mit der Aufnahme kurz nicht "
+                                   "hinterher. Andere rechenintensive Programme schließen hilft.")
                     backlog = chunks.qsize()
                     if backlog >= 3 and self._model_ready.is_set() and self._transcriber:
                         warning = ("Die Erkennung kommt nicht hinterher – der Text hängt etwas "

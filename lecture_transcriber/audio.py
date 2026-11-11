@@ -6,6 +6,8 @@ what Whisper expects.
 
 from __future__ import annotations
 
+import multiprocessing
+import os
 import queue
 import time
 from typing import Iterator, Optional
@@ -138,77 +140,152 @@ class StreamingResampler:
         return out
 
 
-class MicrophoneSource:
-    """Records continuously from an input device. Runs until stop() is called."""
+def _open_input(sd, device, attempts):
+    """Open the first (rate, channels) combination the device accepts."""
+    last_err = None
+    for rate, ch in attempts:
+        try:
+            stream = sd.InputStream(
+                samplerate=rate,
+                channels=ch,
+                dtype="float32",
+                device=device,
+                blocksize=int(rate * BLOCK_SECONDS),
+                # Large host-side buffer: survives short hiccups of this process.
+                latency="high",
+            )
+            stream.start()
+            return stream, rate, ch
+        except Exception as exc:  # PortAudioError and friends
+            last_err = exc
+    raise RuntimeError(f"Audiogerät konnte nicht geöffnet werden: {last_err}")
 
-    def __init__(self, device: Optional[str] = None):
-        self.sd = _import_sounddevice()
-        self.device = _resolve_device(self.sd, device)
-        self._queue: "queue.Queue[np.ndarray]" = queue.Queue()
-        self._stream = None
-        self._resampler: Optional[StreamingResampler] = None
-        self._channels = 1
-        self._running = False
-        self.overflows = 0
+
+def _capture_main(device, out, stop, parent_pid, fake=False):
+    """Entry point of the recording process.
+
+    Runs in its own process so that nothing else (in particular the speech
+    model, which can hold Python's GIL for a long time) delays reading the
+    microphone. Delays there make macOS drop audio -> choppy recordings.
+    Sends ("ready",) or ("error", msg), then ("data", mono16k, dropped)…,
+    and finally ("end",).
+    """
+    stream = None
+    try:
+        if fake:  # used by the tests: 440 Hz tone with a running sample counter
+            out.put(("ready",))
+            n = int(SAMPLE_RATE * BLOCK_SECONDS)
+            i = 0
+            while not stop.is_set():
+                t = (np.arange(n) + i) / SAMPLE_RATE
+                out.put(("data", (0.3 * np.sin(2 * np.pi * 440 * t)).astype(np.float32), False))
+                i += n
+                time.sleep(BLOCK_SECONDS)
+            return
+
+        sd = _import_sounddevice()
+        info = sd.query_devices(device, "input")
+        native = int(info["default_samplerate"])
+        max_ch = int(info["max_input_channels"])
+        attempts = [(SAMPLE_RATE, 1), (native, 1), (native, min(2, max_ch))]
+        try:
+            stream, rate, _ch = _open_input(sd, device, attempts)
+        except RuntimeError as exc:
+            out.put(("error", str(exc)))
+            return
+        resampler = StreamingResampler(rate) if rate != SAMPLE_RATE else None
+        out.put(("ready",))
+        frames = int(rate * BLOCK_SECONDS)
+        while not stop.is_set():
+            data, overflowed = stream.read(frames)  # blocks without holding the GIL
+            mono = data.mean(axis=1) if data.ndim == 2 else data.reshape(-1)
+            if resampler is not None:
+                mono = resampler(mono)
+            out.put(("data", mono.astype(np.float32), bool(overflowed)))
+            if os.getppid() != parent_pid:  # app is gone -> stop recording
+                break
+    except BaseException as exc:
+        out.put(("error", str(exc)))
+    finally:
+        if stream is not None:
+            try:
+                stream.stop()
+                stream.close()
+            except Exception:
+                pass
+        out.put(("end",))
+
+
+class MicrophoneSource:
+    """Records continuously from an input device (in a separate process)."""
+
+    def __init__(self, device: Optional[str] = None, fake: bool = False):
+        self.fake = fake
+        if fake:
+            self.device, self._name = None, "Test-Mikrofon"
+        else:
+            sd = _import_sounddevice()
+            self.device = _resolve_device(sd, device)
+            self._name = sd.query_devices(self.device, "input")["name"]
+        self._ctx = multiprocessing.get_context("spawn")
+        self._queue = None
+        self._stop = None
+        self._proc = None
+        self.dropouts = 0  # blocks where macOS reported lost audio
 
     @property
     def name(self) -> str:
-        info = self.sd.query_devices(self.device, "input")
-        return info["name"]
-
-    def _callback(self, indata, frames, time_info, status):
-        if status and status.input_overflow:
-            self.overflows += 1
-        self._queue.put(indata.copy())
-
-    def _open(self, samplerate: int, channels: int):
-        stream = self.sd.InputStream(
-            samplerate=samplerate,
-            channels=channels,
-            dtype="float32",
-            device=self.device,
-            blocksize=int(samplerate * BLOCK_SECONDS),
-            callback=self._callback,
-        )
-        stream.start()
-        return stream
+        return self._name
 
     def start(self):
-        info = self.sd.query_devices(self.device, "input")
-        native_rate = int(info["default_samplerate"])
-        max_ch = int(info["max_input_channels"])
-        attempts = [(SAMPLE_RATE, 1), (native_rate, 1), (native_rate, min(2, max_ch))]
-        last_err = None
-        for rate, ch in attempts:
-            try:
-                self._stream = self._open(rate, ch)
-            except Exception as exc:  # PortAudioError and friends
-                last_err = exc
-                continue
-            self._channels = ch
-            self._resampler = StreamingResampler(rate) if rate != SAMPLE_RATE else None
-            self._running = True
-            return
-        raise SystemExit(f"Audiogerät konnte nicht geöffnet werden: {last_err}")
+        self._queue = self._ctx.Queue()
+        self._stop = self._ctx.Event()
+        self._proc = self._ctx.Process(
+            target=_capture_main,
+            args=(self.device, self._queue, self._stop, os.getpid(), self.fake),
+            name="vorlesung-audio",
+            daemon=True,
+        )
+        self._proc.start()
+        try:
+            msg = self._queue.get(timeout=30)
+        except queue.Empty:
+            self._kill()
+            raise SystemExit("Das Audiogerät antwortet nicht.")
+        if msg[0] != "ready":
+            self._kill()
+            raise SystemExit(msg[1] if len(msg) > 1 else "Audiogerät konnte nicht geöffnet werden.")
 
     def stop(self):
-        self._running = False
-        if self._stream is not None:
-            self._stream.stop()
-            self._stream.close()
-            self._stream = None
+        if self._stop is not None:
+            self._stop.set()
+
+    def _kill(self):
+        if self._proc is not None:
+            self._proc.join(3)
+            if self._proc.is_alive():
+                self._proc.terminate()
+                self._proc.join(2)
 
     def blocks(self) -> Iterator[np.ndarray]:
-        while self._running or not self._queue.empty():
-            try:
-                data = self._queue.get(timeout=0.2)
-            except queue.Empty:
-                continue
-            mono = data.mean(axis=1) if data.ndim == 2 else data
-            if self._resampler is not None:
-                mono = self._resampler(mono)
-            if len(mono):
-                yield mono.astype(np.float32, copy=False)
+        try:
+            while True:
+                try:
+                    msg = self._queue.get(timeout=0.5)
+                except queue.Empty:
+                    if self._proc is None or not self._proc.is_alive():
+                        break  # recording process died unexpectedly
+                    continue
+                kind = msg[0]
+                if kind == "end":
+                    break
+                if kind == "data":
+                    if msg[2]:
+                        self.dropouts += 1
+                    if len(msg[1]):
+                        yield msg[1]
+        finally:
+            self._kill()
 
 
 class FileSource:

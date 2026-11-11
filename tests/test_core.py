@@ -195,3 +195,34 @@ def test_archive_roundtrip(tmp_path):
     data = engine.load_session(items[0]["id"])
     assert data["paragraphs"] == [{"time": "00:00:05", "text": "Grenzwerte."}]
     assert json.loads((session / "info.json").read_text())["kind"] == "live"
+
+
+# --- recording process -------------------------------------------------------------
+def test_microphone_process_survives_busy_main_process():
+    """Audio is captured in its own process, so a main process that blocks the
+    GIL (like the speech model does) must not cause gaps in the recording."""
+    import threading
+    import time
+
+    from lecture_transcriber.audio import MicrophoneSource
+
+    src = MicrophoneSource(fake=True)
+    src.start()
+    received = []
+    reader = threading.Thread(target=lambda: received.extend(src.blocks()))
+    reader.start()
+    time.sleep(0.5)
+    t0 = time.monotonic()
+    _ = 7 ** (3 * 10 ** 6)  # big-int math in C: holds the GIL without releasing it
+    blocked = time.monotonic() - t0
+    time.sleep(0.5)
+    src.stop()
+    reader.join(10)
+    assert not reader.is_alive()
+    audio = np.concatenate(received)
+    # The fake microphone produces one continuous 440 Hz tone; a gap would break it.
+    t = np.arange(len(audio)) / SAMPLE_RATE
+    expected = (0.3 * np.sin(2 * np.pi * 440 * t)).astype(np.float32)
+    assert np.allclose(audio, expected, atol=1e-4)
+    assert len(audio) >= (1.0 + blocked - 0.3) * SAMPLE_RATE
+    assert src.dropouts == 0
