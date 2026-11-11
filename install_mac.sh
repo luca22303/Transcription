@@ -116,6 +116,10 @@ iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns" || echo " 
 # Ad-hoc signature, so macOS remembers the microphone permission.
 codesign --force --deep --sign - "$APP" >/dev/null 2>&1 || true
 touch "$APP"
+# Register with Launch Services and Spotlight so the app shows up in search right away.
+LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+[[ -x "$LSREGISTER" ]] && "$LSREGISTER" -f "$APP" >/dev/null 2>&1 || true
+mdimport "$APP" >/dev/null 2>&1 || true
 echo "     $APP"
 
 # --- 4. Model -----------------------------------------------------------------
