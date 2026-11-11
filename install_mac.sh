@@ -128,7 +128,7 @@ PY
 
 echo
 bold "Fertig! 🎓"
-echo "Starte „$APP_NAME“ aus dem Programme-Ordner, über Spotlight (⌘ Leertaste) oder mit:"
+echo "Starte „${APP_NAME}“ aus dem Programme-Ordner, über Spotlight (⌘ Leertaste) oder mit:"
 echo "    open \"$APP\""
 echo "Beim ersten Start fragt macOS nach dem Mikrofon-Zugriff – bitte erlauben."
 echo "Transkripte landen in ~/Vorlesungen."
