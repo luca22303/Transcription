@@ -43,10 +43,17 @@ def chunks_of_file(audio: np.ndarray) -> Iterator[Chunk]:
 
 
 class KeepAwake:
-    """Prevents the Mac from sleeping while a job runs (`caffeinate`)."""
+    """Keeps the Mac awake and the app at full speed while a job runs.
+
+    * `caffeinate` prevents idle sleep.
+    * An NSProcessInfo activity stops macOS from throttling the app
+      ("App Nap") while its window is in the background, e.g. while you
+      take notes in another app during a long lecture.
+    """
 
     def __init__(self):
         self._proc = None
+        self._activity = None
 
     def __enter__(self):
         if sys.platform == "darwin":
@@ -54,12 +61,30 @@ class KeepAwake:
                 self._proc = subprocess.Popen(["caffeinate", "-i", "-w", str(os.getpid())])
             except OSError:
                 self._proc = None
+            try:
+                from Foundation import NSProcessInfo
+
+                user_initiated = 0x00FFFFFF | (1 << 20)  # NSActivityUserInitiated
+                latency_critical = 0xFF00000000  # NSActivityLatencyCritical
+                self._activity = NSProcessInfo.processInfo().beginActivityWithOptions_reason_(
+                    user_initiated | latency_critical, "Vorlesung wird aufgenommen"
+                )
+            except Exception:  # pyobjc missing (CLI-only install)
+                self._activity = None
         return self
 
     def __exit__(self, *exc):
         if self._proc is not None:
             self._proc.terminate()
             self._proc = None
+        if self._activity is not None:
+            try:
+                from Foundation import NSProcessInfo
+
+                NSProcessInfo.processInfo().endActivity_(self._activity)
+            except Exception:
+                pass
+            self._activity = None
 
 
 class Engine:

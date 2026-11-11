@@ -17,6 +17,7 @@ import numpy as np
 from .audio import SAMPLE_RATE
 
 FRAME = int(SAMPLE_RATE * 0.03)  # 30 ms analysis frames
+SILENCE_RMS = 0.003  # below this a frame is practically silent (about -50 dBFS)
 
 
 @dataclass
@@ -118,7 +119,11 @@ class Segmenter:
     def _emit(self, cut: int) -> Chunk:
         audio = self._buf[:cut]
         rms = self._frame_rms(audio)
-        has_speech = bool(len(rms)) and int(np.sum(rms > self._threshold())) >= 5
+        # Only skip chunks that are practically silent. Whether there is speech
+        # is decided later by Silero VAD; the relative threshold above is only
+        # good for finding pauses (it can sit at speech level when someone talks
+        # without breaks, which must not discard the chunk).
+        has_speech = bool(len(rms)) and int(np.sum(rms > SILENCE_RMS)) >= 5
         chunk = Chunk(audio=audio, start=self._offset / SAMPLE_RATE, has_speech=has_speech)
         self._buf = self._buf[cut:]
         self._offset += cut

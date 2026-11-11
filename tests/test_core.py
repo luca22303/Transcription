@@ -67,6 +67,17 @@ def test_segmenter_marks_silence():
     assert not chunks[-1].has_speech
 
 
+def test_continuous_speech_is_not_discarded():
+    """Someone talking almost without breaks must still be transcribed."""
+    # Worst case: evenly loud signal, only short breaks (< 15 % of the time).
+    t = np.arange(8 * SAMPLE_RATE) / SAMPLE_RATE
+    steady = (0.2 * np.sin(2 * np.pi * 200 * t)).astype(np.float32)
+    audio = np.concatenate([np.concatenate([steady, silence(0.6, seed=i)]) for i in range(12)])
+    seg = Segmenter(min_seconds=6, max_seconds=25)
+    chunks = feed(seg, audio) + seg.flush()
+    assert all(c.has_speech for c in chunks)
+
+
 def test_chunks_of_file_covers_everything():
     audio = np.concatenate([speech_like(7), silence(0.8), speech_like(12)])
     chunks = list(chunks_of_file(audio))
