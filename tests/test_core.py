@@ -237,3 +237,14 @@ def test_microphone_process_survives_busy_main_process():
     assert np.allclose(audio, expected, atol=1e-4)
     assert len(audio) >= (1.0 + blocked - 0.3) * SAMPLE_RATE
     assert src.dropouts == 0
+
+
+def test_eco_mode_uses_fewer_longer_chunks():
+    """Power-saving mode: fewer, longer chunks (Whisper always computes 30 s)."""
+    from lecture_transcriber.engine import ECO_CHUNKS, LIVE_CHUNKS
+
+    audio = np.concatenate([np.concatenate([speech_like(7), silence(0.6, seed=i)]) for i in range(20)])
+    normal = feed(Segmenter(**LIVE_CHUNKS), audio)
+    eco = feed(Segmenter(**ECO_CHUNKS), audio)
+    assert len(eco) * 2 <= len(normal)
+    assert all(20 * SAMPLE_RATE <= len(c.audio) <= 28 * SAMPLE_RATE for c in eco)

@@ -243,6 +243,7 @@ class AppServer:
                     device=device,
                     prompt=(data.get("prompt") or "").strip(),
                     source=source,
+                    eco=bool(data.get("eco")),
                 )
                 self._json({"ok": True, "session": session.name})
 

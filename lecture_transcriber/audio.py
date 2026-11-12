@@ -187,7 +187,13 @@ def _capture_main(device, out, stop, parent_pid, fake=False):
         info = sd.query_devices(device, "input")
         native = int(info["default_samplerate"])
         max_ch = int(info["max_input_channels"])
-        attempts = [(SAMPLE_RATE, 1), (native, 1), (native, min(2, max_ch))]
+        # Prefer stereo and mix down ourselves: loopback devices (BlackHole)
+        # carry stereo from Zoom/Teams/videos, and opening them as mono would
+        # only record the left channel.
+        stereo = min(2, max_ch)
+        attempts = list(dict.fromkeys(
+            [(SAMPLE_RATE, stereo), (native, stereo), (SAMPLE_RATE, 1), (native, 1)]
+        ))
         try:
             stream, rate, _ch = _open_input(sd, device, attempts)
         except RuntimeError as exc:
@@ -266,6 +272,9 @@ class MicrophoneSource:
             if self._proc.is_alive():
                 self._proc.terminate()
                 self._proc.join(2)
+        if self._queue is not None:
+            self._queue.close()
+            self._queue.cancel_join_thread()
 
     def blocks(self) -> Iterator[np.ndarray]:
         try:

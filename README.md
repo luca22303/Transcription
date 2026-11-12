@@ -12,6 +12,7 @@ lokal auf deinem MacBook. Auf Apple-Silicon-Macs (M1–M4) nutzt sie dafür die 
 - **Fachbegriffe** angeben (z.B. „Eigenwert, Determinante, Prof. Müller“) für die richtige Schreibweise
 - **Absturzsicher**: Text und Audio werden laufend gespeichert, der Mac bleibt während der Aufnahme wach
 - Die Audioaufnahme bleibt als Backup erhalten
+- **Energiesparmodus** (Standard): etwa ⅓ der Rechenlast, kühler Mac, längerer Akku; der Text erscheint dafür 20–30 s später
 - **Hell/Dunkel** per Knopf oben rechts (ohne Auswahl folgt die App dem macOS-Design)
 
 ## Installation (einmalig, ca. 5 Minuten)
@@ -60,6 +61,15 @@ Alle Vorlesungen landen außerdem automatisch in `~/Vorlesungen/`:
 └── info.json
 ```
 
+### Energiesparmodus
+
+Ist standardmäßig an (Schalter über „Aufnahme starten“). Whisper rechnet jeden Abschnitt
+immer als 30-Sekunden-Fenster, egal wie kurz er ist. Der Sparmodus schickt deshalb längere
+Abschnitte (20–28 s) statt kurzer (6–25 s) und versucht unsichere Stellen seltener neu.
+In einem Test mit 5 Minuten Sprache brauchte das **etwa ⅓ der Rechenzeit**, und die Erkennung
+war durch den längeren Zusammenhang sogar etwas genauer. Einziger Nachteil: Der Text erscheint
+20–30 Sekunden nach dem Gesagten.
+
 ### Tipps für den Hörsaal
 
 - Möglichst **weit vorne** sitzen. Das eingebaute MacBook-Mikrofon reicht dann gut aus.
@@ -75,12 +85,26 @@ virtuellen Audiotreiber [BlackHole](https://existential.audio/blackhole/):
 brew install blackhole-2ch
 ```
 
-1. Programm **Audio-MIDI-Setup** öffnen → unten links „+“ → **Gerät mit mehreren Ausgängen erstellen**
-2. Dort **BlackHole 2ch** und deine **Lautsprecher/Kopfhörer** anhaken
-3. In den Systemeinstellungen › Ton › Ausgabe dieses neue Gerät wählen (du hörst weiterhin alles)
-4. In der Vorlesung-App als Audioquelle **BlackHole 2ch** auswählen
+**Einmalig einrichten:**
 
-Nach der Vorlesung die Tonausgabe wieder auf die Lautsprecher zurückstellen.
+1. Programm **Audio-MIDI-Setup** öffnen → unten links „+“ → **Gerät mit mehreren Ausgängen erstellen**
+2. Dort zuerst deine **Lautsprecher/Kopfhörer** anhaken, dann **BlackHole 2ch**
+3. Bei **BlackHole 2ch** das Häkchen **„Driftkorrektur“** setzen (sonst kann der Ton nach einiger Zeit knacken)
+
+**Vor jeder Online-Vorlesung:**
+
+1. Systemeinstellungen › Ton › Ausgabe: das **Gerät mit mehreren Ausgängen** wählen (du hörst weiterhin alles)
+2. In Zoom/Teams als Lautsprecher **„Wie System“** einstellen, nicht direkt die MacBook-Lautsprecher
+3. In der Vorlesung-App als Audioquelle **BlackHole 2ch** auswählen
+
+Gut zu wissen:
+
+- Solange das Gerät mit mehreren Ausgängen aktiv ist, funktionieren die **Lautstärketasten nicht**
+  (eine macOS-Einschränkung). Die Lautstärke regelst du dann in Zoom/Teams selbst.
+- Aufgenommen wird nur, was aus dem Lautsprecher kommt, also die Vortragenden, nicht dein eigenes Mikrofon.
+- Kommt nichts an, zeigt die App nach ein paar Sekunden einen Hinweis. Meist ist dann noch
+  die normale Tonausgabe gewählt.
+- Nach der Vorlesung die Tonausgabe wieder auf die Lautsprecher zurückstellen.
 
 ### Aufzeichnungen & Videos
 

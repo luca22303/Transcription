@@ -33,9 +33,17 @@ from .transcriber import Segment, Transcriber
 Listener = Callable[[str, dict], None]
 
 
+# How the live stream is cut into chunks. Whisper always computes a full
+# 30-second window, no matter how short the chunk is, so long chunks need far
+# less computation per minute of audio -- at the price of the text appearing
+# later.
+LIVE_CHUNKS = dict(min_seconds=6.0, max_seconds=25.0)   # text after ~6-25 s
+ECO_CHUNKS = dict(min_seconds=20.0, max_seconds=28.0)   # power saving: ~20-30 s
+
+
 def chunks_of_file(audio: np.ndarray) -> Iterator[Chunk]:
-    """Split a whole recording at pauses, exactly like the live pipeline does."""
-    seg = Segmenter()
+    """Split a whole recording at pauses (long chunks: no latency needed)."""
+    seg = Segmenter(**ECO_CHUNKS)
     block = SAMPLE_RATE  # feed 1 s blocks
     for i in range(0, len(audio), block):
         yield from seg.push(audio[i : i + block])
@@ -121,6 +129,7 @@ class Engine:
             "progress": 0.0,
             "warning": "",
             "last_session": "",
+            "eco": False,
         }
 
     # -- events -------------------------------------------------------------
@@ -212,6 +221,7 @@ class Engine:
         prompt: str = "",
         source=None,
         save_audio: bool = True,
+        eco: bool = False,
     ) -> Path:
         """Start recording. Raises SystemExit/RuntimeError if the device can't be opened."""
         with self._lock:
@@ -221,13 +231,13 @@ class Engine:
             src.start()  # fail early (permissions, unknown device) before creating files
             self._source = src
             self._cancel.clear()
-            session = self._new_session(title, "live", {"source": src.name})
+            session = self._new_session(title, "live", {"source": src.name, "eco": eco})
             self._job_thread = threading.Thread(
-                target=self._live_job, args=(session, title, prompt, src, save_audio),
+                target=self._live_job, args=(session, title, prompt, src, save_audio, eco),
                 daemon=True, name="live-job",
             )
             self._update(mode="recording", title=title, session=session.name, elapsed=0.0,
-                         backlog=0, warning="", progress=0.0)
+                         backlog=0, warning="", progress=0.0, eco=eco)
             self._job_thread.start()
             return session
 
@@ -247,10 +257,14 @@ class Engine:
         if t is not None:
             t.join(timeout)
 
-    def _live_job(self, session: Path, title: str, prompt: str, src, save_audio: bool):
+    def _live_job(self, session: Path, title: str, prompt: str, src, save_audio: bool,
+                  eco: bool = False):
         writer = TranscriptWriter(session, title)
         recorder = WavRecorder(session / "aufnahme.wav") if save_audio else None
-        segmenter = Segmenter()
+        segmenter = Segmenter(**(ECO_CHUNKS if eco else LIVE_CHUNKS))
+        # Fewer UI updates in power-saving mode (each one makes the window redraw).
+        status_interval = 1.0 if eco else 0.4
+        loopback = any(k in src.name.lower() for k in ("blackhole", "loopback", "soundflower", "monitor"))
         chunks: "queue.Queue[Optional[Chunk]]" = queue.Queue()
         stats = {"audio": 0.0, "compute": 0.0}
 
@@ -271,7 +285,7 @@ class Engine:
                     continue
                 t = time.monotonic()
                 try:
-                    segments = tr.transcribe_chunk(chunk.audio, chunk.start)
+                    segments = tr.transcribe_chunk(chunk.audio, chunk.start, eco=eco)
                 except Exception as exc:  # keep going, never lose the lecture
                     self._emit("log", {"text": f"Abschnitt übersprungen: {exc}"})
                     continue
@@ -297,7 +311,7 @@ class Engine:
                 for chunk in segmenter.push(block):
                     chunks.put(chunk)
                 now = time.monotonic()
-                if now - last_status >= 0.4:
+                if now - last_status >= status_interval:
                     last_status = now
                     audio = np.concatenate(recent) if recent else np.zeros(1)
                     recent = []
@@ -305,8 +319,13 @@ class Engine:
                     elapsed = recorded / SAMPLE_RATE
                     warning = self.state.get("warning", "")
                     if elapsed > 4 and peak == 0.0:
-                        warning = ("Kein Ton vom Mikrofon. Mikrofon-Zugriff erlauben: "
-                                   "Systemeinstellungen › Datenschutz & Sicherheit › Mikrofon.")
+                        if loopback:
+                            warning = ("Kein Ton von " + src.name + ". Läuft der Ton über das "
+                                       "„Gerät mit mehreren Ausgängen“? In Zoom/Teams als "
+                                       "Lautsprecher „Wie System“ wählen.")
+                        else:
+                            warning = ("Kein Ton vom Mikrofon. Mikrofon-Zugriff erlauben: "
+                                       "Systemeinstellungen › Datenschutz & Sicherheit › Mikrofon.")
                     elif warning.startswith("Kein Ton"):
                         warning = ""
                     drops = getattr(src, "dropouts", 0)

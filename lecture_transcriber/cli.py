@@ -47,6 +47,8 @@ def build_parser() -> argparse.ArgumentParser:
     live.add_argument("-d", "--device", default=None,
                       help="Eingabegerät (Nummer oder Teil des Namens, siehe `vorlesung geraete`)")
     live.add_argument("--no-audio", action="store_true", help="Audio nicht als WAV speichern")
+    live.add_argument("--eco", action="store_true",
+                      help="Energiesparmodus: deutlich weniger Rechenlast/Akku, Text ~30 s verzögert")
     live.add_argument("--input-file", default=None, help=argparse.SUPPRESS)  # testing
     live.add_argument("--speed", type=float, default=1.0, help=argparse.SUPPRESS)
 
@@ -96,9 +98,25 @@ def _console(engine, done: threading.Event):
     return listener
 
 
+def _stop_on_signals():
+    """Ctrl+C and `kill` both end the recording cleanly.
+
+    Python ignores Ctrl+C when started as a background job by a script, and
+    `kill` (SIGTERM) would otherwise end the program without saving.
+    """
+    import signal
+
+    def interrupt(signum, frame):
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGINT, interrupt)
+    signal.signal(signal.SIGTERM, interrupt)
+
+
 def run_live(args) -> int:
     from .engine import Engine
 
+    _stop_on_signals()
     engine = Engine(args.output, model=args.model, language=args.language, backend=args.backend)
     done = threading.Event()
     engine.on(_console(engine, done))
@@ -111,7 +129,7 @@ def run_live(args) -> int:
 
         source = FileSource(args.input_file, speed=args.speed)
     session = engine.start_live(title=args.titel, device=args.device, prompt=args.prompt,
-                                source=source, save_audio=not args.no_audio)
+                                source=source, save_audio=not args.no_audio, eco=args.eco)
     print(f"\n● Aufnahme läuft – {session}\n  Beenden mit Strg+C\n", flush=True)
     try:
         while not done.wait(0.5):

@@ -42,6 +42,9 @@ HALLUCINATIONS = [
 ]
 _HALLU_RE = re.compile(r"^\s*(" + "|".join(HALLUCINATIONS) + r")[\s.!?…]*$", re.IGNORECASE)
 
+FULL_TEMPERATURES = (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)  # Whisper default
+ECO_TEMPERATURES = (0.0, 0.5)
+
 MLX_REPOS = {
     "tiny": "mlx-community/whisper-tiny-mlx",
     "base": "mlx-community/whisper-base-mlx",
@@ -224,7 +227,7 @@ class Transcriber:
             verbose=None,
         )
 
-    def _run_mlx(self, audio: np.ndarray, prompt: Optional[str]):
+    def _run_mlx(self, audio: np.ndarray, prompt: Optional[str], temperature):
         import mlx_whisper
 
         result = mlx_whisper.transcribe(
@@ -233,17 +236,23 @@ class Transcriber:
             language=self.language,
             initial_prompt=prompt,
             condition_on_previous_text=False,
+            temperature=temperature,
             verbose=None,
         )
         return result["segments"]
 
-    def _run(self, audio: np.ndarray, prompt: Optional[str]):
+    def _run(self, audio: np.ndarray, prompt: Optional[str], eco: bool = False):
+        # Whisper re-decodes a chunk at higher temperatures when the first
+        # attempt looks unreliable. In power-saving mode we allow one retry
+        # instead of five.
+        temperature = ECO_TEMPERATURES if eco else FULL_TEMPERATURES
         if self.backend == "mlx":
-            return self._mlx_thread.submit(self._run_mlx, audio, prompt).result()
+            return self._mlx_thread.submit(self._run_mlx, audio, prompt, temperature).result()
         segments, _info = self.model.transcribe(
             audio,
             language=self.language,
-            beam_size=self.beam_size,
+            beam_size=1 if eco else self.beam_size,
+            temperature=list(temperature),
             initial_prompt=prompt,
             condition_on_previous_text=False,
             vad_filter=True,
@@ -252,11 +261,11 @@ class Transcriber:
         return segments
 
     # -- public API -------------------------------------------------------
-    def transcribe_chunk(self, audio: np.ndarray, offset: float) -> List[Segment]:
+    def transcribe_chunk(self, audio: np.ndarray, offset: float, eco: bool = False) -> List[Segment]:
         """Transcribe one chunk of live audio. Timestamps are absolute (offset added)."""
         regions = speech_regions(audio)
         if not regions:
             return []
-        result = clean_segments(self._run(audio, self._prompt()), offset, regions)
+        result = clean_segments(self._run(audio, self._prompt(), eco), offset, regions)
         self._remember(result)
         return result

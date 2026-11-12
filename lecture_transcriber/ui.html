@@ -99,6 +99,19 @@
   input[type=text]:focus, select:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--sel); }
   textarea { resize: vertical; min-height: 56px; }
   .hint { font-size: 12px; color: var(--muted); margin-top: 5px; }
+  .switch-row { display: flex; align-items: flex-start; gap: 12px; margin: 18px 0 0; cursor: pointer; font-weight: 400; }
+  .switch-row input { position: absolute; opacity: 0; pointer-events: none; }
+  .switch { flex: none; width: 38px; height: 22px; border-radius: 11px; background: var(--line);
+            position: relative; transition: background .15s; margin-top: 1px; }
+  .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px;
+                   border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: left .15s; }
+  .switch-row input:checked + .switch { background: #34c759; }
+  .switch-row input:checked + .switch::after { left: 18px; }
+  .switch-row input:focus-visible + .switch { box-shadow: 0 0 0 3px var(--sel); }
+  .switch-text { font-size: 13px; }
+  .switch-text b { display: block; font-weight: 600; }
+  .switch-text span { color: var(--muted); font-weight: 400; }
+  .pill .eco { color: #34c759; font-weight: 600; }
   .start {
     margin-top: 24px; width: 100%; padding: 13px; border: none; border-radius: 10px;
     background: var(--rec); color: #fff; font-size: 16px; font-weight: 600;
@@ -205,6 +218,13 @@
       <label for="prompt">Fachbegriffe <span class="opt">(optional)</span></label>
       <textarea id="prompt" placeholder="z.B. Eigenwert, Determinante, Gauß-Algorithmus, Prof. Müller"></textarea>
       <div class="hint">Hilft bei der richtigen Schreibweise von Namen und Fachwörtern. Wird pro Vorlesung gemerkt.</div>
+
+      <label class="switch-row" for="eco">
+        <input type="checkbox" id="eco" checked>
+        <span class="switch" aria-hidden="true"></span>
+        <span class="switch-text"><b>Energiesparmodus</b>
+          <span>Deutlich weniger Akkuverbrauch und Wärme. Der Text erscheint dafür etwa 20–30 Sekunden später.</span></span>
+      </label>
 
       <button class="start" id="startBtn"><span class="dot"></span>Aufnahme starten</button>
       <div class="err" id="startErr"></div>
@@ -318,6 +338,11 @@ function renderBar() {
   else if (isLive) { cls += ' done'; pill = 'Gespeichert · ' + clock(s.elapsed); }
   else if (viewing) { cls += ' done'; pill = dateLabel(viewing.info.started) + (viewing.info.duration ? ' · ' + clock(viewing.info.duration) : ''); }
   $('pill').className = cls; $('pillText').textContent = pill;
+  if (isLive && s.mode === 'recording' && s.eco) {
+    const e = document.createElement('span'); e.className = 'eco'; e.textContent = ' · Sparmodus';
+    e.title = 'Energiesparmodus: Text erscheint mit etwa 20–30 Sekunden Verzögerung';
+    $('pillText').append(e);
+  }
   $('sTitle').textContent = isLive ? (s.title || 'Vorlesung') : (viewing ? viewing.info.title : '');
   $('stopBtn').classList.toggle('hidden', !(isLive && (s.mode === 'recording' || s.mode === 'file')));
   $('stopBtn').lastChild.textContent = s.mode === 'file' ? 'Abbrechen' : 'Stopp';
@@ -381,7 +406,9 @@ async function openSession(id) {
 
 function showLive() {
   viewing = null; follow = true; show('live');
-  renderTranscript(live, state.mode === 'file' ? 'Datei wird gelesen…' : 'Warte auf Sprache…');
+  renderTranscript(live, state.mode === 'file' ? 'Datei wird gelesen…'
+    : state.eco ? 'Warte auf Sprache… (Sparmodus: der erste Text kommt nach etwa 30 Sekunden)'
+    : 'Warte auf Sprache…');
 }
 
 // ---------- devices ----------
@@ -417,7 +444,8 @@ $('startBtn').onclick = async () => {
   if (opt) store.set('device', opt.dataset.name);
   if (title) { const prompts = store.get('prompts', {}); prompts[title] = prompt; store.set('prompts', prompts); }
   $('startBtn').disabled = true;
-  try { live = []; await api('/api/start', {title, prompt, device: sel.value || null}); showLive(); }
+  const eco = $('eco').checked; store.set('eco', eco);
+  try { live = []; await api('/api/start', {title, prompt, device: sel.value || null, eco}); showLive(); }
   catch (e) { $('startErr').textContent = e.message; }
   finally { $('startBtn').disabled = false; }
 };
@@ -490,6 +518,9 @@ $('themeBtn').onclick = () => {
 };
 darkQuery.addEventListener('change', syncThemeButton);
 syncThemeButton();
+
+$('eco').checked = store.get('eco', true);
+$('eco').addEventListener('change', () => store.set('eco', $('eco').checked));
 
 let fs = store.get('fs', 17);
 const applyFs = () => document.documentElement.style.setProperty('--fs', fs + 'px');
